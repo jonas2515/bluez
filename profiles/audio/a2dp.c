@@ -2740,8 +2740,11 @@ add:
 
 	GList *s;
 
+	DBG("A2DP policy: we're available now");
+
 	for (s = services; s != NULL; s = s->next) {
-        btd_service_is_available_changed(s->data);
+		if (device_get_adapter (btd_service_get_device (s->data)) == server->adapter)
+	        btd_service_is_available_changed(s->data);
 	}
 
 	if (err)
@@ -2773,16 +2776,21 @@ void a2dp_remove_sep(struct a2dp_sep *sep)
 		}
 	}
 
+	GList *s;
+
+	DBG("A2DP policy: we're no longer available");
+
+	for (s = services; s != NULL; s = s->next) {
+		if (device_get_adapter (btd_service_get_device (s->data)) == server->adapter)
+	        btd_service_is_available_changed(s->data);
+	}
+
 	if (sep->locked)
 		return;
 
 	a2dp_unregister_sep(sep);
 
-	GList *s;
 
-	for (s = services; s != NULL; s = s->next) {
-        btd_service_is_available_changed(s->data);
-	}
 
 }
 
@@ -3352,7 +3360,7 @@ static int a2dp_sink_probe(struct btd_service *service)
 {
 	struct btd_device *dev = btd_service_get_device(service);
 
-services = g_list_prepend (services, service);
+	services = g_list_prepend (services, service);
 
 	DBG("path %s", device_get_path(dev));
 

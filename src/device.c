@@ -2166,9 +2166,11 @@ int btd_device_connect_services(struct btd_device *dev, GSList *services)
 {
 	GSList *l;
 
-	if (dev->pending || dev->connect || dev->browse)
+	if (dev->pending || dev->connect || dev->browse) {
+DBG("policy bus");
 		return -EBUSY;
-
+}
+DBG("policy not bus");
 	if (!btd_adapter_get_powered(dev->adapter))
 		return -ENETDOWN;
 
@@ -4193,7 +4195,7 @@ void device_update_last_seen(struct btd_device *device, uint8_t bdaddr_type,
 							bool connectable)
 {
 	struct bearer_state *state;
-
+DBG ("policyyyyyyy updating last seen for %s", device_get_path (device));
 	state = get_state(device, bdaddr_type);
 
 	state->last_seen = time(NULL);
@@ -4204,6 +4206,15 @@ void device_update_last_seen(struct btd_device *device, uint8_t bdaddr_type,
 
 	/* Restart temporary timer */
 	set_temporary_timer(device, btd_opts.tmpto);
+}
+
+time_t btd_device_get_last_seen_time(struct btd_device *device, uint8_t bdaddr_type)
+{
+	struct bearer_state *state;
+
+	state = get_state(device, bdaddr_type);
+
+	return state->last_seen;
 }
 
 /* It is possible that we have two device objects for the same device in

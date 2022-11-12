@@ -8362,7 +8362,7 @@ static void dev_disconnected(struct btd_adapter *adapter,
 
 	ba2str(&addr->bdaddr, dst);
 
-	DBG("Device %s disconnected, reason %u", dst, reason);
+	DBG("policy Device %s disconnected, reason %u", dst, reason);
 
 	device = btd_adapter_find_device(adapter, &addr->bdaddr, addr->type);
 	if (device) {
@@ -8392,7 +8392,7 @@ static void disconnect_complete(uint8_t status, uint16_t length,
 
 	if (status == MGMT_STATUS_NOT_CONNECTED) {
 		btd_warn(adapter->dev_id,
-				"Disconnecting failed: already disconnected");
+				"policyyyyyyyy Disconnecting failed: already disconnected");
 	} else if (status != MGMT_STATUS_SUCCESS) {
 		btd_error(adapter->dev_id,
 				"Failed to disconnect device: %s (0x%02x)",
@@ -9333,6 +9333,8 @@ static void disconnected_callback(uint16_t index, uint16_t length,
 	const struct mgmt_ev_device_disconnected *ev = param;
 	struct btd_adapter *adapter = user_data;
 	uint8_t reason;
+
+DBG("policyyyyyyyyyy MGMT DISFDi IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII");
 
 	if (length < sizeof(struct mgmt_addr_info)) {
 		btd_error(adapter->dev_id,
