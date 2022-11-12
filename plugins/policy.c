@@ -47,9 +47,10 @@
 struct reconnect_data {
 	struct btd_device *dev;
 	bool reconnect;
+	bool autoconnect;
 	GSList *services;
 	unsigned int timer;
-	bool active;
+	bool timer_active;
 	unsigned int attempt;
 	bool on_resume;
 };
@@ -110,7 +111,7 @@ static void policy_connect(struct policy_data *data,
 	struct reconnect_data *reconnect;
 
 	reconnect = reconnect_find(btd_service_get_device(service));
-	if (reconnect && reconnect->active)
+	if (reconnect && reconnect->timer_active)
 		return;
 
 	DBG("%s profile %s", device_get_path(data->dev), profile->name);
@@ -210,8 +211,10 @@ static bool policy_connect_sink(gpointer user_data)
 	data->sink_retries++;
 
 	service = btd_device_get_service(data->dev, A2DP_SINK_UUID);
-	if (service != NULL)
+	if (service != NULL) {
+DBG ("policy_connect_sink");
 		policy_connect(data, service);
+}
 
 	return FALSE;
 }
@@ -251,9 +254,10 @@ static void sink_cb(struct btd_service *service, btd_service_state_t old_state,
 			int err = btd_service_get_error(service);
 
 			if (err == -EAGAIN) {
-				if (data->sink_retries < SINK_RETRIES)
+				if (data->sink_retries < SINK_RETRIES) {
+DBG("we went from CONNECTING into DISCONNECTED, we'll try again after sink timer");
 					policy_set_sink_timer(data);
-				else
+				} else
 					data->sink_retries = 0;
 				break;
 			} else if (data->sink_timer > 0) {
@@ -265,9 +269,9 @@ static void sink_cb(struct btd_service *service, btd_service_state_t old_state,
 		if (data->ct_timer > 0) {
 			timeout_remove(data->ct_timer);
 			data->ct_timer = 0;
-		} else if (btd_service_get_state(controller) !=
+		} /*else if (btd_service_get_state(controller) !=
 						BTD_SERVICE_STATE_DISCONNECTED)
-			policy_disconnect(data, controller);
+			policy_disconnect(data, controller);*/
 		break;
 	case BTD_SERVICE_STATE_CONNECTING:
 		break;
@@ -277,14 +281,15 @@ static void sink_cb(struct btd_service *service, btd_service_state_t old_state,
 			data->sink_timer = 0;
 		}
 
-		/* Check if service initiate the connection then proceed
-		 * immediatelly otherwise set timer
-		 */
-		if (btd_service_is_initiator(service))
-			policy_connect(data, controller);
-		else if (btd_service_get_state(controller) !=
-						BTD_SERVICE_STATE_CONNECTED)
-			policy_set_ct_timer(data, CONTROL_CONNECT_TIMEOUT);
+		if (btd_service_get_state(controller) == BTD_SERVICE_STATE_DISCONNECTED) {
+			if (btd_service_is_initiator(service)) {
+		DBG("a2dp connected, now connecting avrcp");
+				policy_connect(data, controller);
+			} else {
+		DBG("a2dp connected, now connecting avrcp with timouet");
+				policy_set_ct_timer(data, CONTROL_CONNECT_TIMEOUT);
+	}
+		}
 		break;
 	case BTD_SERVICE_STATE_DISCONNECTING:
 		break;
@@ -313,14 +318,18 @@ static void hs_cb(struct btd_service *service, btd_service_state_t old_state,
 	case BTD_SERVICE_STATE_CONNECTING:
 		break;
 	case BTD_SERVICE_STATE_CONNECTED:
-		/* Check if service initiate the connection then proceed
-		 * immediately otherwise set timer
-		 */
-		if (btd_service_is_initiator(service))
-			policy_connect(data, sink);
-		else if (btd_service_get_state(sink) !=
-						BTD_SERVICE_STATE_CONNECTED)
-			policy_set_sink_timer(data);
+		if (btd_service_get_state(sink) == BTD_SERVICE_STATE_DISCONNECTED) {
+			if (btd_service_is_initiator(service)) {
+		DBG("hs connected, now connecting sink");
+				policy_connect(data, sink);
+			} else {
+	DBG("hs connected, now connecting sink with timeout");
+				policy_set_sink_timer(data);
+	}
+		}
+
+
+
 		break;
 	case BTD_SERVICE_STATE_DISCONNECTING:
 		break;
@@ -416,9 +425,9 @@ static void source_cb(struct btd_service *service,
 		if (data->tg_timer > 0) {
 			timeout_remove(data->tg_timer);
 			data->tg_timer = 0;
-		} else if (btd_service_get_state(target) !=
+		}/* else if (btd_service_get_state(target) !=
 						BTD_SERVICE_STATE_DISCONNECTED)
-			policy_disconnect(data, target);
+			policy_disconnect(data, target);*/
 		break;
 	case BTD_SERVICE_STATE_CONNECTING:
 		break;
@@ -428,14 +437,12 @@ static void source_cb(struct btd_service *service,
 			data->source_timer = 0;
 		}
 
-		/* Check if service initiate the connection then proceed
-		 * immediatelly otherwise set timer
-		 */
-		if (btd_service_is_initiator(service))
-			policy_connect(data, target);
-		else if (btd_service_get_state(target) !=
-						BTD_SERVICE_STATE_CONNECTED)
-			policy_set_tg_timer(data, CONTROL_CONNECT_TIMEOUT);
+		if (btd_service_get_state(target) == BTD_SERVICE_STATE_DISCONNECTED) {
+			if (btd_service_is_initiator(service))
+				policy_connect(data, target);
+			else
+				policy_set_tg_timer(data, CONTROL_CONNECT_TIMEOUT);
+		}
 		break;
 	case BTD_SERVICE_STATE_DISCONNECTING:
 		break;
@@ -545,7 +552,7 @@ static void target_cb(struct btd_service *service,
 static void reconnect_reset(struct reconnect_data *reconnect)
 {
 	reconnect->attempt = 0;
-	reconnect->active = false;
+	reconnect->timer_active = false;
 
 	if (reconnect->timer > 0) {
 		timeout_remove(reconnect->timer);
@@ -565,7 +572,24 @@ static bool reconnect_match(const char *uuid)
 			return true;
 	}
 
+
 	return false;
+}
+
+static bool autoconnect_match(struct btd_device *dev)
+{
+
+const bdaddr_t head;
+
+//str2ba ("94:DB:56:7F:51:19", &head);
+str2ba ("04:21:44:BD:46:73", &head);
+
+//	DBG("matching %2.2X:%2.2X:%2.2X and %x", head);
+
+ if (device_bdaddr_cmp (dev, &head) == 0)
+   return true;
+
+  return false;
 }
 
 static struct reconnect_data *reconnect_add(struct btd_service *service)
@@ -629,6 +653,24 @@ static void reconnect_remove(struct btd_service *service)
 	g_free(reconnect);
 }
 
+static const char *state2str(btd_service_state_t state)
+{
+	switch (state) {
+	case BTD_SERVICE_STATE_UNAVAILABLE:
+		return "unavailable";
+	case BTD_SERVICE_STATE_DISCONNECTED:
+		return "disconnected";
+	case BTD_SERVICE_STATE_CONNECTING:
+		return "connecting";
+	case BTD_SERVICE_STATE_CONNECTED:
+		return "connected";
+	case BTD_SERVICE_STATE_DISCONNECTING:
+		return "disconnecting";
+	}
+
+	return NULL;
+}
+
 static void service_cb(struct btd_service *service,
 						btd_service_state_t old_state,
 						btd_service_state_t new_state,
@@ -673,26 +715,45 @@ static void service_cb(struct btd_service *service,
 		return;
 	}
 
-	if (new_state != BTD_SERVICE_STATE_CONNECTED)
+	    struct btd_device *dev = btd_service_get_device(service);
+
+	DBG("state change %s %s old %s new %s", device_get_path(dev), profile->name, state2str(old_state), state2str(new_state));
+
+	if (new_state != BTD_SERVICE_STATE_CONNECTED &&
+	    new_state != BTD_SERVICE_STATE_DISCONNECTED)
 		return;
 
-	/*
-	 * Add an entry to track reconnections. The function will return
-	 * an existing entry if there is one.
-	 */
-	reconnect = reconnect_add(service);
+  /*
+   * Add an entry to track reconnections. The function will return
+   * an existing entry if there is one.
+   */
+  reconnect = reconnect_add(service);
+  reconnect->timer_active = false;
 
-	reconnect->active = false;
 
 	/*
-	 * Should this device be reconnected? A matching UUID might not
-	 * be the first profile that's connected so we might have an
-	 * entry but with the reconnect flag set to false.
-	 */
+	* Should this device be reconnected? A matching UUID might not
+	* be the first profile that's connected so we might have an
+	* entry but with the reconnect flag set to false.
+	*/
 	if (!reconnect->reconnect)
-		reconnect->reconnect = reconnect_match(profile->remote_uuid);
+	    reconnect->reconnect = reconnect_match(profile->remote_uuid);
 
-	DBG("Added %s reconnect %u", profile->name, reconnect->reconnect);
+      reconnect->autoconnect = autoconnect_match(dev);
+
+	if (reconnect->autoconnect &&
+	    old_state == BTD_SERVICE_STATE_UNAVAILABLE &&
+	    new_state == BTD_SERVICE_STATE_DISCONNECTED) {
+//		struct btd_device *dev = btd_service_get_device(service);
+
+		if (btd_adapter_get_powered(device_get_adapter(dev))) {
+DBG("Adapter is powered, trying to connect");
+			btd_service_connect(service);
+}
+
+	}
+
+	DBG("done adding reconnect %d auto %d", reconnect->reconnect, reconnect->autoconnect);
 }
 
 static bool reconnect_timeout(gpointer data)
@@ -725,7 +786,7 @@ static void reconnect_set_timer(struct reconnect_data *reconnect, int timeout)
 {
 	static int interval_timeout = 0;
 
-	reconnect->active = true;
+	reconnect->timer_active = true;
 
 	if (reconnect->attempt < reconnect_intervals_len)
 		interval_timeout = reconnect_intervals[reconnect->attempt];
@@ -799,17 +860,45 @@ static void policy_adapter_resume(struct btd_adapter *adapter)
 	}
 }
 
+static void policy_adapter_powered_changed (struct btd_adapter *adapter,
+					gboolean powered)
+{
+	GSList *l;
+
+	if (!powered)
+		return;
+
+DBG("device powered, trying to auto connect stuff");
+
+	for (l = reconnects; l; l = g_slist_next(l)) {
+		struct reconnect_data *reconnect = l->data;
+
+		if (reconnect->autoconnect &&
+		    device_get_adapter(reconnect->dev) == adapter) {
+			int err;
+
+			err = btd_device_connect_services(reconnect->dev, reconnect->services);
+			if (err < 0) {
+				error("Autoconnecting services failed: %s (%d)",
+									strerror(-err), -err);
+				reconnect_reset(reconnect);
+				return;
+			}
+		}
+	}
+}
+
 static void conn_fail_cb(struct btd_device *dev, uint8_t status)
 {
 	struct reconnect_data *reconnect;
 
-	DBG("status %u", status);
+	DBG("conn fail status %u not powerred %d", status, status == MGMT_STATUS_NOT_POWERED);
 
 	reconnect = reconnect_find(dev);
 	if (!reconnect || !reconnect->reconnect)
 		return;
 
-	if (!reconnect->active)
+	if (!reconnect->timer_active)
 		return;
 
 	/* Give up if we were powered off */
@@ -829,10 +918,14 @@ static void conn_fail_cb(struct btd_device *dev, uint8_t status)
 
 static int policy_adapter_probe(struct btd_adapter *adapter)
 {
-	DBG("");
+	DBG("auto %d", auto_enable);
 
-	if (auto_enable)
+	if (auto_enable) {
+DBG("Restoring powered");
 		btd_adapter_restore_powered(adapter);
+}
+
+	service_id = btd_service_add_state_cb(service_cb, NULL);
 
 	return 0;
 }
@@ -841,14 +934,13 @@ static struct btd_adapter_driver policy_driver = {
 	.name	= "policy",
 	.probe	= policy_adapter_probe,
 	.resume = policy_adapter_resume,
+	.powered_changed = policy_adapter_powered_changed,
 };
 
 static int policy_init(void)
 {
 	GError *gerr = NULL;
 	GKeyFile *conf;
-
-	service_id = btd_service_add_state_cb(service_cb, NULL);
 
 	conf = btd_get_main_conf();
 	if (!conf) {
@@ -905,6 +997,7 @@ static int policy_init(void)
 		g_clear_error(&gerr);
 		resume_delay = default_resume_delay;
 	}
+
 done:
 	if (reconnect_uuids && reconnect_uuids[0] && reconnect_attempts) {
 		btd_add_disconnect_cb(disconnect_cb);

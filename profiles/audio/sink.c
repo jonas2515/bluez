@@ -135,6 +135,7 @@ static void stream_state_changed(struct avdtp_stream *stream,
 
 	switch (new_state) {
 	case AVDTP_STATE_IDLE:
+DBG("stream state changed, idle");
 		btd_service_disconnecting_complete(sink->service, 0);
 
 		if (sink->disconnect_id > 0) {
@@ -313,6 +314,7 @@ static void sink_free(struct btd_service *service)
 	}
 
 	if (sink->disconnect_id > 0) {
+	DBG(" killing the thing");
 		btd_service_disconnecting_complete(sink->service, -ECANCELED);
 		a2dp_cancel(sink->disconnect_id);
 		sink->disconnect_id = 0;

@@ -98,7 +98,8 @@ static void change_state(struct btd_service *service, btd_service_state_t state,
 		cb->cb(service, old, state, cb->user_data);
 	}
 
-	if (state == BTD_SERVICE_STATE_DISCONNECTED)
+// that was a bug that broke ->initiator when changing state from inside cb->cb()
+	if (service->state == BTD_SERVICE_STATE_DISCONNECTED)
 		service->initiator = false;
 }
 
@@ -152,6 +153,11 @@ int service_probe(struct btd_service *service)
 
 	err = service->profile->device_probe(service);
 	if (err == 0) {
+    if (service->profile->service_is_available) {
+      if (!service->profile->service_is_available(service->profile, service))
+        return 0;
+    }
+
 		change_state(service, BTD_SERVICE_STATE_DISCONNECTED, 0);
 		return 0;
 	}
@@ -164,6 +170,8 @@ int service_probe(struct btd_service *service)
 
 void service_remove(struct btd_service *service)
 {
+	DBG("%p: service remove, diconnecte", service);
+
 	change_state(service, BTD_SERVICE_STATE_DISCONNECTED, -ECONNABORTED);
 	change_state(service, BTD_SERVICE_STATE_UNAVAILABLE, 0);
 	service->profile->device_remove(service);
@@ -284,7 +292,7 @@ int btd_service_disconnect(struct btd_service *service)
 	struct btd_profile *profile = service->profile;
 	char addr[18];
 	int err;
-
+	DBG("%p: service disco", service);
 	if (!profile->disconnect)
 		return -ENOTSUP;
 
@@ -396,6 +404,7 @@ void btd_service_set_allowed(struct btd_service *service, bool allowed)
 
 	if (!allowed && (service->state == BTD_SERVICE_STATE_CONNECTING ||
 			service->state == BTD_SERVICE_STATE_CONNECTED)) {
+	DBG("%p: not allowed disco", service);
 		btd_service_disconnect(service);
 		return;
 	}
@@ -414,8 +423,10 @@ void btd_service_connecting_complete(struct btd_service *service, int err)
 
 	if (err == 0)
 		change_state(service, BTD_SERVICE_STATE_CONNECTED, 0);
-	else
+	else {
+	DBG("%p: policy con !complete", service);
 		change_state(service, BTD_SERVICE_STATE_DISCONNECTED, err);
+}
 }
 
 void btd_service_disconnecting_complete(struct btd_service *service, int err)
@@ -424,8 +435,26 @@ void btd_service_disconnecting_complete(struct btd_service *service, int err)
 			service->state != BTD_SERVICE_STATE_DISCONNECTING)
 		return;
 
-	if (err == 0)
+	if (err == 0) {
+	DBG("%p: policy disco complete", service);
 		change_state(service, BTD_SERVICE_STATE_DISCONNECTED, 0);
+}
 	else /* If disconnect fails, we assume it remains connected */
 		change_state(service, BTD_SERVICE_STATE_CONNECTED, err);
+}
+
+void btd_service_is_available_changed(struct btd_service *service)
+{
+
+
+  if (service->profile && service->profile->service_is_available) {
+    if (service->profile->service_is_available(service->profile, service)) {
+	DBG("%p: policy is avail now, moving disco", service);
+    		change_state(service, BTD_SERVICE_STATE_DISCONNECTED, 0);
+    } else {
+	DBG("%p: policy is no longer avail now, moving una", service);
+    	change_state(service, BTD_SERVICE_STATE_DISCONNECTED, -ECONNABORTED);
+	    change_state(service, BTD_SERVICE_STATE_UNAVAILABLE, 0);
+    }
+  }
 }

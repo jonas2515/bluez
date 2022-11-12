@@ -584,6 +584,20 @@ static void store_adapter_info(struct btd_adapter *adapter)
 	g_key_file_free(key_file);
 }
 
+static void power_changed_drivers(struct btd_adapter *adapter,
+				gboolean powered)
+{
+	struct btd_adapter_driver *driver;
+	GSList *l;
+
+	for (l = adapter_drivers; l; l = l->next) {
+		driver = l->data;
+
+		if (driver->powered_changed)
+			driver->powered_changed(adapter, powered);
+	}
+}
+
 static void trigger_pairable_timeout(struct btd_adapter *adapter);
 static void adapter_start(struct btd_adapter *adapter);
 static void adapter_stop(struct btd_adapter *adapter);
@@ -604,6 +618,8 @@ static void settings_changed(struct btd_adapter *adapter, uint32_t settings)
 	DBG("Pending settings: 0x%08x", adapter->pending_settings);
 
 	if (changed_mask & MGMT_SETTING_POWERED) {
+		power_changed_drivers(adapter, adapter->current_settings & MGMT_SETTING_POWERED);
+
 	        g_dbus_emit_property_changed(dbus_conn, adapter->path,
 					ADAPTER_INTERFACE, "Powered");
 
@@ -652,6 +668,7 @@ static void adapter_set_power_state(struct btd_adapter *adapter, uint32_t value)
 
 	DBG("%s", adapter_power_state_str(value));
 	adapter->power_state = value;
+
 	g_dbus_emit_property_changed(dbus_conn, adapter->path,
 					ADAPTER_INTERFACE, "PowerState");
 }

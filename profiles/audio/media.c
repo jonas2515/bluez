@@ -236,7 +236,7 @@ static void media_endpoint_remove(void *data)
 static void media_endpoint_exit(DBusConnection *connection, void *user_data)
 {
 	struct media_endpoint *endpoint = user_data;
-
+DBG("policy MEDia endpoint exit");
 	endpoint->watch = 0;
 	media_endpoint_remove(endpoint);
 }
@@ -1296,7 +1296,7 @@ media_endpoint_create(struct media_adapter *adapter,
 	struct media_endpoint_init *init;
 	size_t i;
 	bool succeeded = false;
-
+DBG("policy MEDia endpoint create");
 	endpoint = g_new0(struct media_endpoint, 1);
 	endpoint->sender = g_strdup(sender);
 	endpoint->path = g_strdup(path);

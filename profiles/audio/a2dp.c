@@ -2640,6 +2640,8 @@ static void a2dp_server_unregister(struct a2dp_server *server)
 	g_free(server);
 }
 
+GList *services = NULL;
+
 struct a2dp_sep *a2dp_add_sep(struct btd_adapter *adapter, uint8_t type,
 				uint8_t codec, gboolean delay_reporting,
 				struct a2dp_endpoint *endpoint,
@@ -2736,6 +2738,12 @@ add:
 	sep->user_data = user_data;
 	sep->destroy = destroy;
 
+	GList *s;
+
+	for (s = services; s != NULL; s = s->next) {
+        btd_service_is_available_changed(s->data);
+	}
+
 	if (err)
 		*err = 0;
 	return sep;
@@ -2769,6 +2777,13 @@ void a2dp_remove_sep(struct a2dp_sep *sep)
 		return;
 
 	a2dp_unregister_sep(sep);
+
+	GList *s;
+
+	for (s = services; s != NULL; s = s->next) {
+        btd_service_is_available_changed(s->data);
+	}
+
 }
 
 static void select_cb(struct a2dp_setup *setup, void *ret, int size)
@@ -3321,6 +3336,8 @@ static int a2dp_source_probe(struct btd_service *service)
 
 	DBG("path %s", device_get_path(dev));
 
+
+
 	source_init(service);
 
 	return 0;
@@ -3334,6 +3351,8 @@ static void a2dp_source_remove(struct btd_service *service)
 static int a2dp_sink_probe(struct btd_service *service)
 {
 	struct btd_device *dev = btd_service_get_device(service);
+
+services = g_list_prepend (services, service);
 
 	DBG("path %s", device_get_path(dev));
 
@@ -3388,13 +3407,15 @@ static int a2dp_sink_connect(struct btd_service *service)
 
 	server = find_server(servers, adapter);
 	if (!server || !server->source_enabled) {
-		DBG("Unexpected error: cannot find server");
+		DBG(" policy Unexpected error: cannot find server");
 		return -EPROTONOSUPPORT;
 	}
 
 	/* Return protocol not available if no record/endpoint exists */
-	if (server->source_record_id == 0)
+	if (server->source_record_id == 0) {
+		DBG("policy ENOPROTOOPT");
 		return -ENOPROTOOPT;
+}
 
 	return sink_connect(service);
 }
@@ -3501,6 +3522,20 @@ static void a2dp_sink_server_remove(struct btd_profile *p,
 	a2dp_server_unregister(server);
 }
 
+static gboolean a2dp_sink_service_is_available(struct btd_profile *p, struct btd_service *service)
+{
+	struct btd_device *dev = btd_service_get_device(service);
+	struct btd_adapter *adapter = device_get_adapter(dev);
+	struct a2dp_server *server;
+
+	server = find_server(servers, adapter);
+
+	if (server->source_record_id == 0)
+    return FALSE;
+
+  return TRUE;
+}
+
 static int media_server_probe(struct btd_adapter *adapter)
 {
 	DBG("path %s", adapter_get_path(adapter));
@@ -3529,6 +3564,8 @@ static struct btd_profile a2dp_source_profile = {
 
 	.adapter_probe	= a2dp_sink_server_probe,
 	.adapter_remove	= a2dp_sink_server_remove,
+
+	.service_is_available = NULL,
 };
 
 static struct btd_profile a2dp_sink_profile = {
@@ -3545,6 +3582,8 @@ static struct btd_profile a2dp_sink_profile = {
 
 	.adapter_probe	= a2dp_source_server_probe,
 	.adapter_remove	= a2dp_source_server_remove,
+
+	.service_is_available = a2dp_sink_service_is_available,
 };
 
 static struct btd_adapter_driver media_driver = {

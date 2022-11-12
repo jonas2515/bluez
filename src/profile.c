@@ -2410,7 +2410,7 @@ static struct ext_profile *create_ext(const char *owner, const char *path,
 		p->disconnect = ext_disconnect_dev;
 	}
 
-	DBG("Created \"%s\"", ext->name);
+	DBG(" policy Created \"%s\"", ext->name);
 
 	ext_profiles = g_slist_append(ext_profiles, ext);
 
@@ -2425,7 +2425,7 @@ static void remove_ext(struct ext_profile *ext)
 
 	ext_profiles = g_slist_remove(ext_profiles, ext);
 
-	DBG("Removed \"%s\"", ext->name);
+	DBG(" policy Removed \"%s\"", ext->name);
 
 	ext_remove_records(ext, NULL);
 
@@ -2448,7 +2448,7 @@ static void ext_exited(DBusConnection *conn, void *user_data)
 {
 	struct ext_profile *ext = user_data;
 
-	DBG("\"%s\" exited", ext->name);
+	DBG("\"%s\" policy exited", ext->name);
 
 	remove_ext(ext);
 }
@@ -2462,7 +2462,7 @@ static DBusMessage *register_profile(DBusConnection *conn,
 
 	sender = dbus_message_get_sender(msg);
 
-	DBG("sender %s", sender);
+	DBG("policy sender %s", sender);
 
 	dbus_message_iter_init(msg, &args);
 

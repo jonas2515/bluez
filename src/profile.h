@@ -40,6 +40,8 @@ struct btd_profile {
 						struct btd_adapter *adapter);
 	void (*adapter_remove) (struct btd_profile *p,
 						struct btd_adapter *adapter);
+
+	gboolean (*service_is_available) (struct btd_profile *p, struct btd_service *service);
 };
 
 void btd_profile_foreach(void (*func)(struct btd_profile *p, void *data),
