@@ -451,6 +451,16 @@ static gboolean store_device_info_cb(gpointer user_data)
 					       WAKE_FLAG_ENABLED);
 	}
 
+  if (device->bredr) {
+	  g_key_file_set_integer(key_file, "General", "LastSeenBREDR",
+							  btd_device_get_last_seen_time (device, BDADDR_BREDR));
+  }
+
+  if (device->le) {
+	  g_key_file_set_integer(key_file, "General", "LastSeenLE",
+							  btd_device_get_last_seen_time (device, BDADDR_LE_PUBLIC));
+  }
+
 	if (device->uuids) {
 		GSList *l;
 		int i;
@@ -2166,11 +2176,9 @@ int btd_device_connect_services(struct btd_device *dev, GSList *services)
 {
 	GSList *l;
 
-	if (dev->pending || dev->connect || dev->browse) {
-DBG("policy bus");
+	if (dev->pending || dev->connect || dev->browse)
 		return -EBUSY;
-}
-DBG("policy not bus");
+
 	if (!btd_adapter_get_powered(dev->adapter))
 		return -ENETDOWN;
 
@@ -3415,6 +3423,20 @@ static void load_info(struct btd_device *device, const char *local,
 			error("Unknown device technology");
 	}
 
+  if (device->bredr) {
+	  struct bearer_state *state;
+	  state = get_state(device, BDADDR_BREDR);
+
+	  state->last_seen = g_key_file_get_integer(key_file, "General", "LastSeenBREDR", NULL);
+  }
+
+  if (device->le) {
+	  struct bearer_state *state;
+	  state = get_state(device, BDADDR_LE_PUBLIC);
+
+	  state->last_seen = g_key_file_get_integer(key_file, "General", "LastSeenLE", NULL);
+  }
+
 	if (!device->le) {
 		device->bdaddr_type = BDADDR_BREDR;
 	} else {
@@ -4195,14 +4217,17 @@ void device_update_last_seen(struct btd_device *device, uint8_t bdaddr_type,
 							bool connectable)
 {
 	struct bearer_state *state;
-DBG ("policyyyyyyy updating last seen for %s", device_get_path (device));
+
 	state = get_state(device, bdaddr_type);
 
 	state->last_seen = time(NULL);
 	state->connectable = connectable;
 
-	if (!device_is_temporary(device))
+	if (!device_is_temporary(device)) {
+DBG ("policyyyyyyy updating last seen for %s", device_get_path (device));
+  	store_device_info(device);
 		return;
+  }
 
 	/* Restart temporary timer */
 	set_temporary_timer(device, btd_opts.tmpto);

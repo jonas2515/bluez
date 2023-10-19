@@ -572,17 +572,6 @@ static void reconnect_reset(struct reconnect_data *reconnect)
 		timeout_remove(reconnect->timer);
 		reconnect->timer = 0;
 	}
-
-	reconnect->is_prioritized = false;
-
-	has_prioritized_reconnects = FALSE;
-	for (l = reconnects; l; l = l->next) {
-		struct reconnect_data *r = l->data;
-		if (r->is_prioritized) {
-			has_prioritized_reconnects = TRUE;
-			break;
-		}
-	}
 }
 
 static bool reconnect_match(const char *uuid)
@@ -630,9 +619,8 @@ str2ba ("94:DB:56:7F:51:19", &head);
 	return false;
 }
 
-static struct reconnect_data *reconnect_add(struct btd_service *service)
+static struct reconnect_data *reconnect_add(struct btd_device *dev)
 {
-	struct btd_device *dev = btd_service_get_device(service);
 	struct reconnect_data *reconnect;
 
 	reconnect = reconnect_find(dev);
@@ -735,6 +723,8 @@ autoconnect_all_lru (gpointer data)
 			device_get_adapter(reconnect->dev) == adapter) {
 			int err;
 
+reconnect->attempt = 1;
+
 				error("Autoconnecting services for device %s",
 					device_get_path (reconnect->dev));
 
@@ -760,7 +750,7 @@ queue_autoconnect_all_lru (struct btd_adapter *adapter)
 
 //	queue_autoconnect_all_id = g_idle_add_full(G_PRIORITY_LOW, autoconnect_all_lru, adapter, NULL);
 
-	queue_autoconnect_all_id = g_timeout_add(400, autoconnect_all_lru, adapter); 
+	queue_autoconnect_all_id = g_timeout_add(500, autoconnect_all_lru, adapter); 
 }
 
 static void service_cb(struct btd_service *service,
@@ -809,6 +799,11 @@ static void service_cb(struct btd_service *service,
 
 	struct btd_device *dev = btd_service_get_device(service);
 
+	reconnect = reconnect_find(dev);
+	if (new_state == BTD_SERVICE_STATE_CONNECTED)
+		reconnect->attempt = 0;
+
+
 //	DBG("Service (%p) state change %s %s: %s -> %s", service, device_get_path(dev), profile->name, state2str(old_state), state2str(new_state));
 
 	/*
@@ -819,11 +814,13 @@ static void service_cb(struct btd_service *service,
 	/* Service got added, check whether re- and autoconnecting are enabled */
 	if (old_state == BTD_SERVICE_STATE_UNAVAILABLE &&
 	    new_state == BTD_SERVICE_STATE_DISCONNECTED) {
-		reconnect = reconnect_add(service);
+		if (!reconnect)
+			reconnect = reconnect_add(dev);
+
 		reconnect->timer_active = false;
 
-		reconnect->reconnect = reconnect_match(profile->remote_uuid);
-		reconnect->autoconnect = autoconnect_match(service);
+		reconnect->reconnect |= reconnect_match(profile->remote_uuid);
+		reconnect->autoconnect |= autoconnect_match(service);
 
 		if (reconnect->autoconnect) {
 			if (!g_slist_find(reconnect->services, service))
@@ -859,8 +856,6 @@ static bool reconnect_timeout(gpointer data)
 {
 	struct reconnect_data *reconnect = data;
 	int err;
-
-
 
 
 	if (has_prioritized_reconnects) 
@@ -918,8 +913,8 @@ static void reconnect_set_timer(struct reconnect_data *reconnect, int timeout)
 
 	reconnect->timer_active = true;
 
-	if (reconnect->attempt < reconnect_intervals_len)
-		interval_timeout = reconnect_intervals[reconnect->attempt];
+	if (reconnect->attempt <= reconnect_intervals_len)
+		interval_timeout = reconnect_intervals[reconnect->attempt - 1];
 
 	if (timeout < 0)
 		timeout = interval_timeout;
@@ -1025,64 +1020,44 @@ static void conn_fail_cb(struct btd_device *dev, uint8_t status)
 	 * attempts at once but we want to connect to 3 devices. Instead of trying
 	 * to connect to device number 1 again and again (and thus keeping the
 	 * slot on the card blocked), we want to give device number 3 a chance too.
-	 * So we prioritize connection attempts for devices which failed with
-	 * NO_RESOURCES here.
 	 */
-	if (status == MGMT_STATUS_NO_RESOURCES) {
-		if (reconnect->attempt == 0) {
-			reconnect->is_prioritized = TRUE;
-			has_prioritized_reconnects = TRUE;
-		}
+	if (status == MGMT_STATUS_NO_RESOURCES)
 		return;
-//		reconnect->attempt = 0;
-	}
 
 	DBG("Connection to %s failed, because %u", device_get_path(dev), status);
 
-	// rename next_prioritized
-	reconnect->is_prioritized = FALSE;
 	reconnect->attempt++;
 
 
-		GSList *l;
+	GSList *l;
 
 	has_prioritized_reconnects = FALSE;
+
 	for (l = reconnects; l; l = l->next) {
 		struct reconnect_data *r = l->data;
-		if (r->is_prioritized) {
+
+		/* Implementing the policy from the comment above, do reconnect attempts
+		 * in lock-step.
+		 */
+		if (r->attempt == reconnect->attempt - 1) {
 			has_prioritized_reconnects = TRUE;
-			break;
-		}
+			int err;
+
+			error("Autoconnecting services for device %s",
+				device_get_path (r->dev));
+
+			err = btd_device_connect_services(r->dev, r->services);
+			if (err == -EBUSY)
+				continue; // fine
+
+			if (err < 0) {
+				error("failed: %s (%d)",
+									strerror(-err), -err);
+				/* Let the on_conn_failed() handler take care of trying again */
+			}
+		 }
 	}
 
-	if (has_prioritized_reconnects) {
-
-		DBG("there's prioritzed reconnects, doing them before");
-
-		for (l = reconnects; l; l = l->next) {
-			struct reconnect_data *r = l->data;
-	
-			if (r->is_prioritized) {
-				int err;
-
-				error("Autoconnecting services for device %s",
-					device_get_path (r->dev));
-
-				err = btd_device_connect_services(r->dev, r->services);
-				if (err == -EBUSY)
-					continue; // fine
-
-				if (err < 0) {
-					error("failed: %s (%d)",
-										strerror(-err), -err);
-					/* Let the on_conn_failed() handler take care of trying again */
-				}
-			 }
-		}
-
-
-
-	}
 
 	/* Give up if we were powered off */
 	if (status == MGMT_STATUS_NOT_POWERED) {

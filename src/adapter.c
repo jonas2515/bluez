@@ -666,7 +666,7 @@ static void adapter_set_power_state(struct btd_adapter *adapter, uint32_t value)
 	if (adapter->power_state == value)
 		return;
 
-	DBG("%s", adapter_power_state_str(value));
+	DBG("POWER STATE %s", adapter_power_state_str(value));
 	adapter->power_state = value;
 
 	g_dbus_emit_property_changed(dbus_conn, adapter->path,
@@ -3881,8 +3881,7 @@ static const GDBusPropertyTable adapter_properties[] = {
 	{ "Alias", "s", property_get_alias, property_set_alias },
 	{ "Class", "u", property_get_class },
 	{ "Powered", "b", property_get_powered, property_set_powered },
-	{ "PowerState", "s", property_get_power_state, NULL, NULL,
-			     G_DBUS_PROPERTY_FLAG_EXPERIMENTAL },
+	{ "PowerState", "s", property_get_power_state, NULL, NULL },
 	{ "Discoverable", "b", property_get_discoverable,
 					property_set_discoverable },
 	{ "DiscoverableTimeout", "u", property_get_discoverable_timeout,
