@@ -716,6 +716,9 @@ static void reconnect_set_timer(struct reconnect_device_entry *reconnect, int ti
 {
 	static int interval_timeout = 0;
 
+	if (reconnect->timer > 0)
+		return;
+
 	reconnect->reconnecting = true;
 
 	if (reconnect->attempt < reconnect_intervals_len)
