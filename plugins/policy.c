@@ -601,6 +601,23 @@ static void reconnect_remove(struct reconnect_device_entry *device_entry)
 	g_free(device_entry);
 }
 
+static void update_reconnect_enabled(struct reconnect_device_entry *device_entry)
+{
+	GSList *l;
+
+	for (l = device_entry->services_to_reconnect; l; l = l->next) {
+		struct btd_service *service = l->data;
+		struct btd_profile *profile = btd_service_get_profile(service);
+
+		if (reconnect_match(profile->remote_uuid)) {
+			device_entry->reconnect_enabled = TRUE;
+			return;
+		}
+	}
+
+	device_entry->reconnect_enabled = FALSE;
+}
+
 static void service_cb(struct btd_service *service,
 						btd_service_state_t old_state,
 						btd_service_state_t new_state,
@@ -646,6 +663,8 @@ static void service_cb(struct btd_service *service,
 			g_slist_remove(device_entry->services_to_reconnect, service);
 		btd_service_unref(service);
 
+		update_reconnect_enabled(device_entry);
+
 		if (!device_entry->services_to_reconnect)
 			reconnect_remove(device_entry);
 	} else if (new_state == BTD_SERVICE_STATE_CONNECTED) {
@@ -661,13 +680,7 @@ static void service_cb(struct btd_service *service,
 																service);
 		btd_service_ref(service);
 
-       /*
-        * Should this device be reconnected? A matching UUID might not
-        * be the first profile that's connected so we might have an
-        * entry but with the reconnect flag set to false.
-        */
-       if (!reconnect->reconnect)
-               reconnect->reconnect = reconnect_match(profile->remote_uuid);
+		update_reconnect_enabled(device_entry);
 
 		DBG("Added %s reconnect %u", profile->name, device_entry->reconnect_enabled);
 	}
