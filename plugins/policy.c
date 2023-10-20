@@ -49,7 +49,7 @@ struct reconnect_device_entry {
 	bool reconnect_enabled;
 	GSList *services_to_reconnect;
 	unsigned int timer;
-	bool active;
+	bool reconnecting;
 	unsigned int attempt;
 	bool on_resume;
 };
@@ -110,7 +110,7 @@ static void policy_connect(struct policy_data *data,
 	struct reconnect_device_entry *device_entry;
 
 	device_entry = reconnect_find(btd_service_get_device(service));
-	if (device_entry && device_entry->active)
+	if (device_entry && device_entry->reconnecting)
 		return;
 
 	DBG("%s profile %s", device_get_path(data->dev), profile->name);
@@ -545,7 +545,7 @@ static void target_cb(struct btd_service *service,
 static void reconnect_reset(struct reconnect_device_entry *reconnect)
 {
 	reconnect->attempt = 0;
-	reconnect->active = false;
+	reconnect->reconnecting = false;
 
 	if (reconnect->timer > 0) {
 		timeout_remove(reconnect->timer);
@@ -669,7 +669,7 @@ static void service_cb(struct btd_service *service,
 			reconnect_remove(device_entry);
 	} else if (new_state == BTD_SERVICE_STATE_CONNECTED) {
 		if (device_entry) {
-			device_entry->active = false;
+			device_entry->reconnecting = false;
 			if (g_slist_find(device_entry->services_to_reconnect, service))
 				return;
 		} else {
@@ -716,7 +716,7 @@ static void reconnect_set_timer(struct reconnect_device_entry *reconnect, int ti
 {
 	static int interval_timeout = 0;
 
-	reconnect->active = true;
+	reconnect->reconnecting = true;
 
 	if (reconnect->attempt < reconnect_intervals_len)
 		interval_timeout = reconnect_intervals[reconnect->attempt];
@@ -800,7 +800,7 @@ static void conn_fail_cb(struct btd_device *dev, uint8_t status)
 	if (!device_entry || !device_entry->reconnect_enabled)
 		return;
 
-	if (!device_entry->active)
+	if (!device_entry->reconnecting)
 		return;
 
 	/* Give up if we were powered off */
