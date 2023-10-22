@@ -1592,6 +1592,7 @@ static int connect_io(struct ext_io *conn, const bdaddr_t *src,
 
 	if (conn->psm) {
 		conn->proto = BTPROTO_L2CAP;
+          		//	error("policy: connect io L2 cap");
 		io = bt_io_connect(ext_connect, conn, NULL, &gerr,
 					BT_IO_OPT_SOURCE_BDADDR, src,
 					BT_IO_OPT_DEST_BDADDR, dst,
@@ -1600,6 +1601,7 @@ static int connect_io(struct ext_io *conn, const bdaddr_t *src,
 					BT_IO_OPT_INVALID);
 	} else {
 		conn->proto = BTPROTO_RFCOMM;
+                    		//	error("policy: connect io rfcomm");
 		io = bt_io_connect(ext_connect, conn, NULL, &gerr,
 					BT_IO_OPT_SOURCE_BDADDR, src,
 					BT_IO_OPT_DEST_BDADDR, dst,
@@ -1642,17 +1644,17 @@ static void record_cb(sdp_list_t *recs, int err, gpointer user_data)
 	struct ext_io *conn = user_data;
 	struct ext_profile *ext = conn->ext;
 	sdp_list_t *r;
-
+          		//	error("policy: callback for service  ");
 	conn->resolving = false;
 
 	if (err < 0) {
-		error("Unable to get %s SDP record: %s", ext->name,
+		error("policy Unable to get %s SDP record: %s", ext->name,
 							strerror(-err));
 		goto failed;
 	}
 
 	if (!recs || !recs->data) {
-		error("No SDP records found for %s", ext->name);
+		error("policy No SDP records found for %s", ext->name);
 		err = -ENOTSUP;
 		goto failed;
 	}
@@ -1663,7 +1665,7 @@ static void record_cb(sdp_list_t *recs, int err, gpointer user_data)
 		int port;
 
 		if (sdp_get_access_protos(rec, &protos) < 0) {
-			error("Unable to get proto list from %s record",
+			error("policy Unable to get proto list from %s record",
 								ext->name);
 			err = -ENOTSUP;
 			goto failed;
@@ -1689,12 +1691,12 @@ static void record_cb(sdp_list_t *recs, int err, gpointer user_data)
 	}
 
 	if (!conn->chan && !conn->psm) {
-		error("Failed to find L2CAP PSM or RFCOMM channel for %s",
+		error("policy Failed to find L2CAP PSM or RFCOMM channel for %s",
 								ext->name);
 		err = -ENOTSUP;
 		goto failed;
 	}
-
+          		//	error("policy: callback serv, calling connect  ");
 	err = connect_io(conn, btd_adapter_get_address(conn->adapter),
 					device_get_address(conn->device));
 	if (err < 0) {
@@ -1737,7 +1739,7 @@ static int ext_connect_dev(struct btd_service *service)
 	struct ext_io *conn;
 	struct ext_profile *ext;
 	int err;
-
+          			//error("policy: ext_connect_dev  ");
 	ext = find_ext(profile);
 	if (!ext)
 		return -ENOENT;
@@ -1757,6 +1759,7 @@ static int ext_connect_dev(struct btd_service *service)
 		err = connect_io(conn, btd_adapter_get_address(adapter),
 						device_get_address(dev));
 	} else {
+          		//	error("policy: resolve ser  ");
 		err = resolve_service(conn, btd_adapter_get_address(adapter),
 						device_get_address(dev));
 	}

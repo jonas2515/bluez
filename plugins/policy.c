@@ -618,6 +618,8 @@ static void update_reconnect_enabled(struct reconnect_device_entry *device_entry
 	device_entry->reconnect_enabled = FALSE;
 }
 
+static void reconnect_set_timer(struct reconnect_device_entry *reconnect, int timeout);
+
 static void service_cb(struct btd_service *service,
 						btd_service_state_t old_state,
 						btd_service_state_t new_state,
@@ -683,7 +685,16 @@ static void service_cb(struct btd_service *service,
 		update_reconnect_enabled(device_entry);
 
 		DBG("Added %s reconnect %u", profile->name, device_entry->reconnect_enabled);
-	}
+	} else if (old_state == BTD_SERVICE_STATE_CONNECTING && new_state == BTD_SERVICE_STATE_DISCONNECTED) {
+		if (device_entry && device_entry->reconnecting) {
+      	DBG("reconnecting manually for case where conn fail doesn't happend, %s reconnect %u", device_get_path(device_entry->dev), device_entry->reconnect_enabled);
+                  // this is basically the case where btd_device_connect_services() in reconnect_timeout() fails
+	if (device_entry->timer == 0) {
+                device_entry->attempt--;
+        	reconnect_set_timer(device_entry, -1);
+        }
+    }
+    }
 }
 
 static bool reconnect_timeout(gpointer data)
@@ -691,7 +702,7 @@ static bool reconnect_timeout(gpointer data)
 	struct reconnect_device_entry *device_entry = data;
 	int err;
 
-	DBG("Reconnecting profiles");
+	DBG("Reconnecting profiles for device %s", device_get_path(device_entry->dev));
 
 	/* Mark the GSource as invalid */
 	device_entry->timer = 0;
@@ -797,7 +808,16 @@ static void conn_fail_cb(struct btd_device *dev, uint8_t status)
 {
 	struct reconnect_device_entry *device_entry;
 
-	DBG("status %u", status);
+	DBG("status %u for dev %s", status, device_get_path(dev));
+if (status == MGMT_STATUS_DISCONNECTED)
+	DBG("status disconnected");
+if (status == MGMT_STATUS_NOT_CONNECTED)
+	DBG("status not connected");
+
+if (status == MGMT_STATUS_BUSY)
+	DBG("status busy");
+if (status == MGMT_STATUS_PERMISSION_DENIED)
+	DBG("status permission denied");
 
 	device_entry = reconnect_find(dev);
 	if (!device_entry || !device_entry->reconnect_enabled)
@@ -817,6 +837,16 @@ static void conn_fail_cb(struct btd_device *dev, uint8_t status)
 		reconnect_reset(device_entry);
 		return;
 	}
+
+if (status == MGMT_STATUS_NO_RESOURCES) {
+	DBG("status no resources");
+        // NO_RESOURCES simply means the card is busy doing other stuff, so that doesn't count
+        if (reconnect->timer == 0) {
+        	device_entry->attempt--;
+        	reconnect_set_timer(device_entry, -1);
+        }
+  return;
+}
 
 	reconnect_set_timer(device_entry, -1);
 }

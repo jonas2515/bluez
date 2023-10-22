@@ -176,7 +176,7 @@ static void process_response(struct bt_hci *hci, uint16_t opcode,
 		wakeup_writer(hci);
 		return;
 	}
-
+printf("RESPONSEEEEEEEE");
 	cmd = queue_remove_if(hci->rsp_queue, match_cmd_opcode,
 						UINT_TO_PTR(opcode));
 	if (!cmd)
