@@ -749,7 +749,7 @@ static void disconnect_cb(struct btd_device *dev, uint8_t reason)
 {
 	struct reconnect_device_entry *device_entry;
 
-	DBG("reason %u", reason);
+	DBG("reason %u: %s", reason, device_get_path(dev));
 
 	/* Only attempt reconnect for the following reasons */
 	if (reason != MGMT_DEV_DISCONN_TIMEOUT &&
@@ -757,6 +757,7 @@ static void disconnect_cb(struct btd_device *dev, uint8_t reason)
 		return;
 
 	device_entry = reconnect_find(dev);
+  	DBG("device entry %p en %d", device_entry, device_entry->reconnect_enabled);
 	if (!device_entry || !device_entry->reconnect_enabled)
 		return;
 
@@ -841,7 +842,7 @@ if (status == MGMT_STATUS_PERMISSION_DENIED)
 if (status == MGMT_STATUS_NO_RESOURCES) {
 	DBG("status no resources");
         // NO_RESOURCES simply means the card is busy doing other stuff, so that doesn't count
-        if (reconnect->timer == 0) {
+        if (device_entry->timer == 0) {
         	device_entry->attempt--;
         	reconnect_set_timer(device_entry, -1);
         }
