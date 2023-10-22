@@ -485,6 +485,16 @@ static gboolean store_device_info_cb(gpointer user_data)
 					       WAKE_FLAG_ENABLED);
 	}
 
+  if (device->bredr) {
+	  g_key_file_set_integer(key_file, "General", "LastSeenBREDR",
+							  btd_device_get_last_seen_time (device, BDADDR_BREDR));
+  }
+
+  if (device->le) {
+	  g_key_file_set_integer(key_file, "General", "LastSeenLE",
+							  btd_device_get_last_seen_time (device, BDADDR_LE_PUBLIC));
+  }
+
 	if (device->uuids) {
 		GSList *l;
 		int i;
@@ -3691,6 +3701,20 @@ static void load_info(struct btd_device *device, const char *local,
 			error("Unknown device technology");
 	}
 
+  if (device->bredr) {
+	  struct bearer_state *state;
+	  state = get_state(device, BDADDR_BREDR);
+
+	  state->last_seen = g_key_file_get_integer(key_file, "General", "LastSeenBREDR", NULL);
+  }
+
+  if (device->le) {
+	  struct bearer_state *state;
+	  state = get_state(device, BDADDR_LE_PUBLIC);
+
+	  state->last_seen = g_key_file_get_integer(key_file, "General", "LastSeenLE", NULL);
+  }
+
 	if (!device->le) {
 		device->bdaddr_type = BDADDR_BREDR;
 	} else {
@@ -4485,11 +4509,23 @@ void device_update_last_seen(struct btd_device *device, uint8_t bdaddr_type,
 	state->last_seen = time(NULL);
 	state->connectable = connectable;
 
-	if (!device_is_temporary(device))
+	if (!device_is_temporary(device)) {
+DBG ("policyyyyyyy updating last seen for %s", device_get_path (device));
+  	store_device_info(device);
 		return;
+  }
 
 	/* Restart temporary timer */
 	set_temporary_timer(device, btd_opts.tmpto);
+}
+
+time_t btd_device_get_last_seen_time(struct btd_device *device, uint8_t bdaddr_type)
+{
+	struct bearer_state *state;
+
+	state = get_state(device, bdaddr_type);
+
+	return state->last_seen;
 }
 
 /* It is possible that we have two device objects for the same device in
