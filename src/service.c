@@ -84,6 +84,16 @@ static void change_state(struct btd_service *service, btd_service_state_t state,
 	btd_assert(service->device != NULL);
 	btd_assert(service->profile != NULL);
 
+    if (old == BTD_SERVICE_STATE_UNAVAILABLE &&
+		state == BTD_SERVICE_STATE_DISCONNECTED &&
+		service->profile->service_is_available) {
+		if (!service->profile->service_is_available(service->profile, service)) {
+			DBG("%p: device policy %s profile %s not available, stopping change to DISCONNECTED", service,
+							addr, service->profile->name);
+			return;
+		}
+    }
+
 	service->state = state;
 	service->err = err;
 
@@ -98,7 +108,8 @@ static void change_state(struct btd_service *service, btd_service_state_t state,
 		cb->cb(service, old, state, cb->user_data);
 	}
 
-	if (state == BTD_SERVICE_STATE_DISCONNECTED)
+// that was a bug that broke ->initiator when changing state from inside cb->cb()
+	if (service->state == BTD_SERVICE_STATE_DISCONNECTED)
 		service->initiator = false;
 }
 
@@ -424,8 +435,30 @@ void btd_service_disconnecting_complete(struct btd_service *service, int err)
 			service->state != BTD_SERVICE_STATE_DISCONNECTING)
 		return;
 
-	if (err == 0)
+	if (err == 0) {
+	DBG("%p: policy disco complete", service);
 		change_state(service, BTD_SERVICE_STATE_DISCONNECTED, 0);
+}
 	else /* If disconnect fails, we assume it remains connected */
 		change_state(service, BTD_SERVICE_STATE_CONNECTED, err);
+}
+
+void btd_service_is_available_changed(struct btd_service *service)
+{
+	if (!service->profile->service_is_available)
+		return;
+
+	if (service->profile->service_is_available(service->profile, service)) {
+		if (service->state == BTD_SERVICE_STATE_UNAVAILABLE) {
+			DBG("%p: service is avail now, moving to DISCONNECTED", service);
+			change_state(service, BTD_SERVICE_STATE_DISCONNECTED, 0);
+		}
+	} else {
+		if (service->state == BTD_SERVICE_STATE_UNAVAILABLE)
+			return;
+
+		DBG("%p: service is no longer avail now, moving to UNAVAILABLE", service);
+		change_state(service, BTD_SERVICE_STATE_DISCONNECTED, -ECONNABORTED);
+		change_state(service, BTD_SERVICE_STATE_UNAVAILABLE, 0);
+	}
 }
