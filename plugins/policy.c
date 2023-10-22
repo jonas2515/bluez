@@ -247,6 +247,8 @@ static void sink_cb(struct btd_service *service, btd_service_state_t old_state,
 		}
 		break;
 	case BTD_SERVICE_STATE_DISCONNECTED:
+               break; // let conn failed handler deal with it
+
 		if (old_state == BTD_SERVICE_STATE_CONNECTING) {
 			int err = btd_service_get_error(service);
 
@@ -398,6 +400,8 @@ static void source_cb(struct btd_service *service,
 		}
 		break;
 	case BTD_SERVICE_STATE_DISCONNECTED:
+               break; // let conn failed handler deal with it
+
 		if (old_state == BTD_SERVICE_STATE_CONNECTING) {
 			int err = btd_service_get_error(service);
 
@@ -461,6 +465,8 @@ static void controller_cb(struct btd_service *service,
 		}
 		break;
 	case BTD_SERVICE_STATE_DISCONNECTED:
+               break; // let conn failed handler deal with it
+
 		if (old_state == BTD_SERVICE_STATE_CONNECTING) {
 			int err = btd_service_get_error(service);
 
@@ -511,6 +517,8 @@ static void target_cb(struct btd_service *service,
 		}
 		break;
 	case BTD_SERVICE_STATE_DISCONNECTED:
+               break; // let conn failed handler deal with it
+
 		if (old_state == BTD_SERVICE_STATE_CONNECTING) {
 			int err = btd_service_get_error(service);
 
