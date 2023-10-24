@@ -723,12 +723,12 @@ static bool reconnect_timeout(gpointer data)
 		error("Reconnecting services failed: %s (%d)",
 							strerror(-err), -err);
 		reconnect_reset(device_entry);
-		return FALSE;
+		return G_SOURCE_REMOVE;
 	}
 
 	device_entry->attempt++;
 
-	return FALSE;
+	return G_SOURCE_REMOVE;
 }
 
 static void reconnect_set_timer(struct reconnect_device_entry *reconnect, int timeout)
