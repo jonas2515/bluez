@@ -1648,7 +1648,7 @@ static void record_cb(sdp_list_t *recs, int err, gpointer user_data)
 	conn->resolving = false;
 
 	if (err < 0) {
-		error("policy Unable to get %s SDP record: %s", ext->name,
+		error("Unable to get %s SDP record: %s", ext->name,
 							strerror(-err));
 		goto failed;
 	}

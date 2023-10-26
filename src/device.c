@@ -2135,8 +2135,12 @@ static void device_profile_connected(struct btd_device *dev,
 	 * pending, otherwise it will trigger another connect to the same
 	 * profile
 	 */
-	if (profile != btd_service_get_profile(pending))
+	if (profile != btd_service_get_profile(pending)) {
+	DBG("CONNECT this profile doesn't match first pending, bailout");
 		return;
+}
+
+	DBG("CONNECT doing connect_next");
 
 	if (connect_next(dev) == 0)
 		return;
