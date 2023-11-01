@@ -131,6 +131,9 @@ int hci_le_read_remote_features(int dd, uint16_t handle, uint8_t *features, int 
 
 int hci_for_each_dev(int flag, int(*func)(int dd, int dev_id, long arg), long arg);
 int hci_get_route(bdaddr_t *bdaddr);
+uint16_t hci_for_each_conn(int dev_id, int (*func)(int sk, struct hci_conn_info *ci, long arg),
+			long arg);
+uint16_t hci_get_handle(int dev_id, const bdaddr_t *bdaddr);
 
 char *hci_bustostr(int bus);
 char *hci_typetostr(int type);

@@ -884,6 +884,55 @@ done:
 	return dev_id;
 }
 
+uint16_t hci_for_each_conn(int dev_id, int (*func)(int sk, struct hci_conn_info *ci, long arg),
+			long arg)
+{
+	struct hci_conn_list_req *cl;
+	struct hci_conn_info *ci;
+	uint16_t handle = 0;
+	int i, sk, err = 0;
+
+	sk = socket(AF_BLUETOOTH, SOCK_RAW | SOCK_CLOEXEC, BTPROTO_HCI);
+	if (sk < 0)
+		return 0;
+
+	cl = malloc(10 * sizeof(*ci) + sizeof(*cl));
+	if (!cl) {
+		err = errno;
+		goto done;
+	}
+
+	memset(cl, 0, 10 * sizeof(*ci) + sizeof(*cl));
+
+	cl->dev_id = dev_id;
+	cl->conn_num = 10;
+	ci = cl->conn_info;
+
+	if (ioctl(sk, HCIGETCONNLIST, (void *) cl) < 0) {
+		err = errno;
+		goto free;
+	}
+
+	for (i = 0; i < cl->conn_num; i++, ci++) {
+		if (!func || func(sk, ci, arg)) {
+			handle = ci->handle;
+			break;
+		}
+	}
+
+	if (handle == 0)
+		err = ENODEV;
+
+free:
+	free(cl);
+
+done:
+	close(sk);
+	errno = err;
+
+	return handle;
+}
+
 static int __other_bdaddr(int dd, int dev_id, long arg)
 {
 	struct hci_dev_info di = { .dev_id = dev_id };
@@ -918,6 +967,20 @@ int hci_get_route(bdaddr_t *bdaddr)
 				(long) (bdaddr ? bdaddr : BDADDR_ANY));
 
 	return dev_id;
+}
+
+static int __same_bdaddr_conn(int dd, struct hci_conn_info *ci, long arg)
+{
+	return !bacmp((bdaddr_t *) arg, &ci->bdaddr);
+}
+
+uint16_t hci_get_handle(int dev_id, const bdaddr_t *bdaddr)
+{
+	uint16_t handle;
+
+	handle = hci_for_each_conn(dev_id, __same_bdaddr_conn, (long) bdaddr);
+
+	return handle;
 }
 
 int hci_devid(const char *str)
