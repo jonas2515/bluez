@@ -23,6 +23,10 @@
 
 #include <glib.h>
 
+#include "bluetooth/bluetooth.h"
+#include "bluetooth/hci.h"
+#include "bluetooth/hci_lib.h"
+
 #include "lib/bluetooth.h"
 #include "lib/sdp.h"
 #include "lib/sdp_lib.h"
@@ -965,6 +969,83 @@ static void handle_unanswered_req(struct avdtp *session,
 	pending_req_free(req);
 }
 
+static int enable_connection_optimizations(struct btd_device *device, bool enable) {
+	struct btd_adapter *adapter = device_get_adapter(device);
+	int dev_id = btd_adapter_get_index(adapter);
+	int fd;
+	write_automatic_flush_timeout_cp flush_timeout_cp;
+	uint8_t brcm_priority_cp[3];
+	uint16_t timeout;
+	struct hci_request rq;
+	uint8_t status;
+	uint16_t conn_handle;
+
+	g_warning("SENDING BRCM priority to %d", enable);
+
+	conn_handle = hci_get_handle(dev_id, device_get_address(device));
+	if (conn_handle == 0) {
+		g_warning("COULDNT FIND HANDLE FOR BDDADDRD");
+		return -1;
+	}
+
+	fd = hci_open_dev(dev_id);
+	if (fd == -1) {
+		g_warning("open dev failed");
+		return -1;
+	}
+
+	timeout = (200 * 1000) / 625;  // timeout units of 0.625ms
+
+	memset(&flush_timeout_cp, 0, sizeof(flush_timeout_cp));
+	flush_timeout_cp.handle = conn_handle;
+	flush_timeout_cp.timeout = enable ? timeout : 0;
+
+	memset(&rq, 0, sizeof(rq));
+	rq.ogf = OGF_HOST_CTL;
+	rq.ocf = OCF_WRITE_AUTOMATIC_FLUSH_TIMEOUT;
+	rq.cparam = &flush_timeout_cp;
+	rq.clen = WRITE_AUTOMATIC_FLUSH_TIMEOUT_CP_SIZE;
+	rq.rparam = &status;
+	rq.rlen = 0x01;
+
+	if (hci_send_req(fd, &rq, 100) < 0) {
+		g_warning("setting automatic flush timeout failed");
+		return -1;
+	}
+
+	if (status) {
+		g_warning("status is bad");
+		errno = EIO;
+		return -1;
+	}
+
+	memset(&brcm_priority_cp, 0, sizeof(brcm_priority_cp));
+	brcm_priority_cp[0] = conn_handle;
+	brcm_priority_cp[2] = enable ? 0x01 : 0x00;
+
+	memset(&rq, 0, sizeof(rq));
+	rq.ogf = OGF_VENDOR_CMD;
+	rq.ocf = 0x057;
+	rq.cparam = &brcm_priority_cp;
+	rq.clen = 0x03;
+	rq.rparam = &status;
+	rq.rlen = 0x01;
+
+	if (hci_send_req(fd, &rq, 100) < 0) {
+		g_warning("sending BCM priority req failed");
+		return -1;
+	}
+
+
+	if (status) {
+		g_warning("status is bad");
+		errno = EIO;
+		return -1;
+	}
+
+	return 0;
+}
+
 static void avdtp_sep_set_state(struct avdtp *session,
 				struct avdtp_local_sep *sep,
 				avdtp_state_t state)
@@ -1000,6 +1081,7 @@ static void avdtp_sep_set_state(struct avdtp *session,
 		break;
 	case AVDTP_STATE_OPEN:
 		stream->starting = FALSE;
+		enable_connection_optimizations(session->device, false);
 		break;
 	case AVDTP_STATE_STREAMING:
 		if (stream->start_timer) {
@@ -1007,6 +1089,8 @@ static void avdtp_sep_set_state(struct avdtp *session,
 			stream->start_timer = 0;
 		}
 		stream->open_acp = FALSE;
+
+		enable_connection_optimizations(session->device, true);
 		break;
 	case AVDTP_STATE_CLOSING:
 	case AVDTP_STATE_ABORTING:
@@ -1027,6 +1111,8 @@ static void avdtp_sep_set_state(struct avdtp *session,
 		/* Remove pending commands for this stream from the queue */
 		cleanup_queue(session, stream);
 		session->streams = g_slist_remove(session->streams, stream);
+
+		enable_connection_optimizations(session->device, false);
 		break;
 	default:
 		break;

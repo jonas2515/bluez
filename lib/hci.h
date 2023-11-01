@@ -929,6 +929,11 @@ typedef struct {
 #define OCF_READ_AUTOMATIC_FLUSH_TIMEOUT	0x0027
 
 #define OCF_WRITE_AUTOMATIC_FLUSH_TIMEOUT	0x0028
+typedef struct {
+        uint16_t        handle;
+        uint16_t        timeout; /* 0.625ms units */
+} __attribute__ ((packed)) write_automatic_flush_timeout_cp;
+#define WRITE_AUTOMATIC_FLUSH_TIMEOUT_CP_SIZE 4
 
 #define OCF_READ_NUM_BROADCAST_RETRANS	0x0029
 
